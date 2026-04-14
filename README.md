@@ -4,8 +4,6 @@ A [GitHub CLI](https://cli.github.com/) extension that reads your local Claude C
 
 No external dependencies — pure Python stdlib and vanilla JS, no build step, no npm.
 
-![Dashboard screenshot showing spend by model, session counts, cache hit rates, and per-bucket cost tables](https://github.com/joelisfar/gh-claude-costs/assets/screenshot.png)
-
 ## Install
 
 ```bash
