@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# gh-claude-costs: GitHub CLI extension to view Claude Code usage costs
+# Install: gh extension install <repo>
+# Usage:   gh claude-costs [--since YYYY-MM-DD]
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+EXTRACT="$SCRIPT_DIR/extract.py"
+TEMPLATE="$SCRIPT_DIR/template.html"
+
+if ! command -v python3 &>/dev/null; then
+  echo "Error: python3 is required but not found" >&2
+  exit 1
+fi
+
+# Extract data, inject into template, open
+python3 - "$EXTRACT" "$TEMPLATE" "$@" <<'PYEOF'
+import subprocess, sys, os, tempfile, json
+
+extract_script = sys.argv[1]
+template_path = sys.argv[2]
+extra_args = sys.argv[3:]
+
+# Run extract.py
+result = subprocess.run(
+    ["python3", extract_script] + extra_args,
+    capture_output=True, text=True
+)
+if result.returncode != 0:
+    print(result.stderr, file=sys.stderr)
+    sys.exit(1)
+print(result.stderr, end="", file=sys.stderr)
+
+data_json = result.stdout.strip()
+
+# Validate it's valid JSON
+json.loads(data_json)
+
+# Read template and inject
+with open(template_path) as f:
+    html = f.read()
+
+html = html.replace("__INJECTED_DATA__", data_json)
+
+# Write to temp file and open
+fd, tmppath = tempfile.mkstemp(suffix=".html", prefix="claude-costs-")
+with os.fdopen(fd, "w") as f:
+    f.write(html)
+
+print(f"Dashboard: {tmppath}", file=sys.stderr)
+
+import platform
+if platform.system() == "Darwin":
+    os.system(f"open '{tmppath}'")
+elif platform.system() == "Linux":
+    os.system(f"xdg-open '{tmppath}'")
+else:
+    print(f"Open in browser: {tmppath}", file=sys.stderr)
+PYEOF
