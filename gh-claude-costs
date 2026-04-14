@@ -50,11 +50,8 @@ with os.fdopen(fd, "w") as f:
 
 print(f"Dashboard: {tmppath}", file=sys.stderr)
 
-import platform
-if platform.system() == "Darwin":
-    os.system(f"open --url 'file://{tmppath}'")
-elif platform.system() == "Linux":
-    os.system(f"xdg-open 'file://{tmppath}'")
+import webbrowser
+webbrowser.open(f"file://{tmppath}")
 else:
     print(f"Open in browser: {tmppath}", file=sys.stderr)
 PYEOF
