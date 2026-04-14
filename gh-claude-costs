@@ -16,7 +16,7 @@ fi
 
 # Extract data, inject into template, open
 python3 - "$EXTRACT" "$TEMPLATE" "$@" <<'PYEOF'
-import subprocess, sys, os, tempfile, json
+import subprocess, sys, os, tempfile, json, http.server, threading, socket, webbrowser
 
 extract_script = sys.argv[1]
 template_path = sys.argv[2]
@@ -43,13 +43,29 @@ with open(template_path) as f:
 
 html = html.replace("__INJECTED_DATA__", data_json)
 
-# Write to temp file and open
-fd, tmppath = tempfile.mkstemp(suffix=".html", prefix="claude-costs-")
-with os.fdopen(fd, "w") as f:
-    f.write(html)
+# Serve via localhost to avoid file:// restrictions and file-association issues
+content = html.encode("utf-8")
+served = threading.Event()
 
-print(f"Dashboard: {tmppath}", file=sys.stderr)
+class Handler(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(content)
+        served.set()
+    def log_message(self, *args):
+        pass
 
-import webbrowser
-webbrowser.open(f"file://{tmppath}")
+sock = socket.socket()
+sock.bind(("127.0.0.1", 0))
+port = sock.getsockname()[1]
+sock.close()
+
+server = http.server.HTTPServer(("127.0.0.1", port), Handler)
+threading.Thread(target=server.serve_forever, daemon=True).start()
+print(f"Dashboard: http://127.0.0.1:{port}", file=sys.stderr)
+webbrowser.open(f"http://127.0.0.1:{port}")
+served.wait(timeout=10)
+server.shutdown()
 PYEOF
