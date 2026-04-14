@@ -16,7 +16,7 @@ fi
 
 # Extract data, inject into template, open
 python3 - "$EXTRACT" "$TEMPLATE" "$@" <<'PYEOF'
-import subprocess, sys, os, tempfile, json, http.server, threading, socket, webbrowser
+import subprocess, sys, os, json, http.server, threading, socket, platform
 
 extract_script = sys.argv[1]
 template_path = sys.argv[2]
@@ -63,7 +63,13 @@ sock.close()
 server = http.server.HTTPServer(("127.0.0.1", port), Handler)
 url = f"http://127.0.0.1:{port}"
 print(f"\n  Dashboard running at: {url}\n  Press Ctrl+C to stop\n", file=sys.stderr)
-webbrowser.open(url)
+if platform.system() == "Darwin":
+    os.system(f"open '{url}'")
+elif platform.system() == "Linux":
+    os.system(f"xdg-open '{url}'")
+else:
+    import webbrowser
+    webbrowser.open(url)
 
 try:
     server.serve_forever()
