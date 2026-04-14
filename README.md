@@ -1,6 +1,6 @@
 # gh-claude-costs
 
-> **Disclaimer:** This was heavily vibecoded. It works on my machine. PRs welcome, sympathy also welcome.
+> **Disclaimer:** This was heavily vibecoded. It works on my machine. PRs welcome.
 
 A [GitHub CLI](https://cli.github.com/) extension that reads your local Claude Code session logs and opens a cost breakdown dashboard in your browser.
 
@@ -9,10 +9,7 @@ No external dependencies — pure Python stdlib and vanilla JS, no build step, n
 ## Quick start
 
 ```bash
-# Step 1: Install the extension (one-time)
 gh extension install joelisfar/gh-claude-costs
-
-# Step 2: Run it
 gh claude-costs
 ```
 
