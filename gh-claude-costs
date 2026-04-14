@@ -52,6 +52,4 @@ print(f"Dashboard: {tmppath}", file=sys.stderr)
 
 import webbrowser
 webbrowser.open(f"file://{tmppath}")
-else:
-    print(f"Open in browser: {tmppath}", file=sys.stderr)
 PYEOF
