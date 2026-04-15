@@ -771,6 +771,7 @@
       let dt = { cold_start: 0, warm: 0, cold_expired: 0, total: 0 };
       let dTurns = { cold_start: 0, warm: 0, cold_expired: 0, total: 0 };
       let coldTax = 0;
+      let totalInputTok = 0;
       let ridx = 0;
 
       for (const key of directKeys) {
@@ -786,6 +787,7 @@
           dt[b] += ic;
           dTurns[b] += turns;
           rowTotal += ic;
+          totalInputTok += (sec[b].input || 0) + (sec[b].cache_write || 0) + (sec[b].cache_read || 0);
           if (p && b === "cold_expired")
             coldTax += cost(sec[b].cache_write, p.cache_write - p.cache_read);
           html += `<td${b !== buckets[0] ? ' class="col-sep"' : ""}>${fmtTurns(turns)}</td><td>${fmtCost(ic)}</td>`;
@@ -1092,6 +1094,25 @@
       );
       addCard(
         "summaryRow1",
+        "Sessions",
+        fmt(meta.totalSessions),
+        `${meta.activeDays} active days`,
+      );
+      addCard(
+        "summaryRow1",
+        "Human turns",
+        fmt(dTurns.total),
+        `${(dTurns.total / meta.activeDays).toFixed(1)} / active day`,
+      );
+      addCard(
+        "summaryRow1",
+        "Human turn input tokens",
+        `${(totalInputTok / 1e6).toFixed(1)}M`,
+        `Avg ${((totalInputTok / dTurns.total) / 1e3).toFixed(1)}K / human turn`,
+      );
+
+      addCard(
+        "summaryRow2",
         "Session starts",
         fmt(dTurns.cold_start),
         `${fmtCost(dt.cold_start)} · ${((100 * dt.cold_start) / directInputTotal).toFixed(0)}% of input`,
@@ -1099,7 +1120,7 @@
         "ac-cs",
       );
       addCard(
-        "summaryRow1",
+        "summaryRow2",
         "Warm human turns",
         fmt(dTurns.warm),
         `${fmtCost(dt.warm)} · ${((100 * dt.warm) / directInputTotal).toFixed(0)}% of input`,
@@ -1107,33 +1128,12 @@
         "ac-warm",
       );
       addCard(
-        "summaryRow1",
+        "summaryRow2",
         "Cold human turns",
         fmt(dTurns.cold_expired),
         `${fmtCost(dt.cold_expired)} · ${((100 * dt.cold_expired) / directInputTotal).toFixed(0)}% of input`,
         "v-cold",
         "ac-cold",
-      );
-
-      const totalCompactions =
-        (meta.compactions?.auto ?? 0) + (meta.compactions?.manual ?? 0);
-      addCard(
-        "summaryRow2",
-        "Sessions",
-        fmt(meta.totalSessions),
-        `${meta.activeDays} active days`,
-      );
-      addCard(
-        "summaryRow2",
-        "Total human turns",
-        fmt(dTurns.total),
-        `${(dTurns.total / meta.activeDays).toFixed(1)} / active day`,
-      );
-      addCard(
-        "summaryRow2",
-        "Compactions",
-        fmt(totalCompactions),
-        `${meta.compactions?.auto ?? 0} auto · ${meta.compactions?.manual ?? 0} manual`,
       );
       addCard(
         "summaryRow2",
