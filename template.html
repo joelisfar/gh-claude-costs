@@ -668,11 +668,11 @@
             icon.innerHTML = ICONS.auto;
             label.textContent = "Auto";
           } else if (mode === "dark") {
-            icon.innerHTML = ICONS.sun;
-            label.textContent = "Light";
-          } else {
             icon.innerHTML = ICONS.moon;
             label.textContent = "Dark";
+          } else {
+            icon.innerHTML = ICONS.sun;
+            label.textContent = "Light";
           }
         }
 
@@ -928,14 +928,20 @@
         const subColdTok = subSec
           ? coldBuckets.reduce(
               (s, b) =>
-                s + (subSec[b].input || 0) + (subSec[b].cache_write || 0) + (subSec[b].cache_read || 0),
+                s +
+                (subSec[b].input || 0) +
+                (subSec[b].cache_write || 0) +
+                (subSec[b].cache_read || 0),
               0,
             )
           : 0;
         const subWarmTok = subSec
           ? warmBuckets.reduce(
               (s, b) =>
-                s + (subSec[b].input || 0) + (subSec[b].cache_write || 0) + (subSec[b].cache_read || 0),
+                s +
+                (subSec[b].input || 0) +
+                (subSec[b].cache_write || 0) +
+                (subSec[b].cache_read || 0),
               0,
             )
           : 0;
