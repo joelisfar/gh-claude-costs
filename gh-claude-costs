@@ -16,7 +16,7 @@ fi
 
 # Extract data, inject into template, open
 python3 - "$EXTRACT" "$TEMPLATE" "$@" <<'PYEOF'
-import subprocess, sys, os, json, http.server, threading, socket, platform
+import subprocess, sys, os, json, http.server, platform
 
 extract_script = sys.argv[1]
 template_path = sys.argv[2]
@@ -55,12 +55,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
 
-sock = socket.socket()
-sock.bind(("127.0.0.1", 0))
-port = sock.getsockname()[1]
-sock.close()
-
-server = http.server.HTTPServer(("127.0.0.1", port), Handler)
+server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+port = server.server_address[1]
 url = f"http://127.0.0.1:{port}"
 print(f"\n  Dashboard running at: {url}\n  Press Ctrl+C to stop\n", file=sys.stderr)
 if platform.system() == "Darwin":

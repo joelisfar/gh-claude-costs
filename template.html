@@ -1,228 +1,1165 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Claude Code Usage Dashboard</title>
-<style>
-  :root {
-    --bg: #f8f9fa; --card: #ffffff; --border: #e2e5e9; --text: #1a1a1a;
-    --muted: #6b7280; --accent: #d97706; --warm: #059669; --cold: #dc2626;
-    --cold-start: #9333ea; --header-bg: #f1f3f5;
-  }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); padding: 2rem; max-width: 1200px; margin: 0 auto; }
-  h1 { font-size: 1.5rem; font-weight: 600; margin-bottom: 0.25rem; }
-  .subtitle { color: var(--muted); font-size: 0.875rem; margin-bottom: 1.5rem; }
-  .summary-row { display: flex; gap: 1rem; margin-bottom: 1rem; }
-  .summary-card { flex: 1; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 0.85rem 1rem; }
-  .summary-card .label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
-  .summary-card .value { font-size: 1.35rem; font-weight: 600; margin-top: 0.15rem; }
-  .summary-card .detail { font-size: 0.75rem; color: var(--muted); margin-top: 0.15rem; }
-  .summary-card .value.warm { color: var(--warm); }
-  .summary-card .value.cold { color: var(--cold); }
-  .summary-card .value.cold-start { color: var(--cold-start); }
-  table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; font-size: 0.8rem; margin-bottom: 1.5rem; }
-  thead th { background: var(--header-bg); font-weight: 600; text-align: left; padding: 0.5rem 0.6rem; border-bottom: 2px solid var(--border); white-space: nowrap; font-size: 0.75rem; }
-  thead th.group-warm { border-bottom-color: var(--warm); }
-  thead th.group-cold-start { border-bottom-color: var(--cold-start); }
-  thead th.group-cold { border-bottom-color: var(--cold); }
-  thead th.group-total { border-bottom-color: var(--text); }
-  tbody td { padding: 0.4rem 0.6rem; text-align: left; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
-  tbody td:first-child { font-weight: 500; }
-  tbody tr:last-child td { border-bottom: none; }
-  tbody tr.model-row td { font-weight: 600; cursor: pointer; user-select: none; }
-  tbody tr.overhead-row td { cursor: pointer; user-select: none; }
-  tbody tr.subtotal td { border-top: 2px solid var(--border); font-weight: 600; }
-  .grand-total-bar { display: flex; justify-content: space-between; align-items: center; padding: 0.6rem 1rem; margin-top: 0.75rem; margin-bottom: 1.5rem; background: var(--header-bg); border: 1px solid var(--border); border-radius: 8px; font-weight: 700; font-size: 0.875rem; font-variant-numeric: tabular-nums; }
-  tbody tr.detail-row.hidden { display: none; }
-  tbody tr.detail-row td { font-size: 0.78rem; color: var(--muted); }
-  tbody tr.detail-row td:first-child { padding-left: 1.75rem; }
-  .toggle-arrow { display: inline-flex; align-items: center; justify-content: center; width: 1em; height: 1em; margin-right: 0.15em; vertical-align: middle; transition: transform 0.15s ease; color: #999; }
-  .toggle-arrow .toggle-arrow-svg { width: 0.7em; height: 0.7em; }
-  .toggle-arrow.collapsed { transform: rotate(0deg); }
-  .toggle-arrow.expanded { transform: rotate(90deg); }
-  .turn-count { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--text); }
-  .col-sep { border-left: 2px solid var(--border); }
-  .footnote { font-size: 0.7rem; color: var(--muted); margin-top: 0.5rem; line-height: 1.5; }
-</style>
-</head>
-<body>
-<h1>Claude Code Usage</h1>
-<p class="subtitle" id="dateRange"></p>
-<div class="summary-row" id="summaryRow1"></div>
-<div class="summary-row" id="summaryRow2"></div>
-<table id="directTable"><thead id="directHead"></thead><tbody id="directBody"></tbody></table>
-<table id="overheadTable" style="margin-bottom:0"><thead id="overheadHead"></thead><tbody id="overheadBody"></tbody></table>
-<div class="grand-total-bar"><span>Grand total</span><span id="grandTotalValue"></span></div>
-<div class="footnote" id="footnotes"></div>
-<script>
-const DATA = __INJECTED_DATA__;
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Claude Code Usage Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..60,300;12..60,400;12..60,600;12..60,700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      /*
+  Palette:
+    warm  (cache hit, good)     → yellow
+    cold  (cache miss, bad)     → purple
+    cs    (session start)       → sky blue
+    total                       → green
+*/
 
-const fmt = (n) => n.toLocaleString('en-US');
-const fmtCost = (n) => n === 0 ? '-' : '$' + n.toFixed(2);
-const fmtTokens = (n) => { if (n === 0) return '-'; if (n >= 1e6) return (n/1e6).toFixed(1)+'M'; if (n >= 1e3) return (n/1e3).toFixed(0)+'K'; return fmt(n); };
-const fmtTurns = (n) => n === 0 ? '-' : fmt(n);
-const chevron = '<svg class="toggle-arrow-svg" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 1.5L7 5L3 8.5"/></svg>';
+      /* ─── LIGHT THEME (default) ────────────────────────────────────────── */
+      :root {
+        --bg: #f0f1f5;
+        --card: #ffffff;
+        --card-hover: #f8f9fc;
+        --border: #e0e3ec;
+        --border2: #cdd1de;
+        --text: #111827;
+        --text2: #374151;
+        --muted: #5c6373; /* 5.6:1 on white ✓ */
+        --header-bg: #f4f5f9;
+        --subtotal-bg: #f7f8fc;
+        --shadow: 0 1px 4px rgba(0, 0, 0, 0.07), 0 1px 2px rgba(0, 0, 0, 0.04);
+        --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.11);
 
-function modelName(key) {
-  return key.split('|')[0].replace('claude-','').replace(/-/g,' ').replace(/(\d+) (\d+)/,'$1.$2').replace(/\b\w/g,c=>c.toUpperCase());
-}
-function getPrice(key) { return DATA.pricing[key.split('|')[0]] || null; }
-function cost(tokens, rate) { return tokens / 1e6 * rate; }
-function bucketInputCost(bd, p) { return p ? cost(bd.input,p.base)+cost(bd.cache_write,p.cache_write)+cost(bd.cache_read,p.cache_read) : 0; }
-function sectionInputCost(sec, p) { return buckets.reduce((s,b) => s + bucketInputCost(sec[b],p), 0); }
-function sectionOutputCost(sec, p) { return p ? cost(buckets.reduce((s,b) => s + sec[b].output, 0), p.output) : 0; }
-function sectionTotalCost(sec, p) { return sectionInputCost(sec,p) + sectionOutputCost(sec,p); }
+        /* text colors — contrast-safe on white/near-white */
+        --v-warm: #a16207; /* dark gold,  4.6:1 ✓ */
+        --v-cold: #6d28d9; /* dark violet, 6.9:1 ✓ */
+        --v-cs: #0369a1; /* dark sky,   5.8:1 ✓ */
+        --v-total: #065f46; /* dark green, 7.3:1 ✓ */
 
-const buckets = ['cold_start', 'warm', 'cold_expired'];
-const bucketLabels = { cold_start: 'Session start (cold)', warm: 'Warm turn', cold_expired: 'Cold turn' };
-const bucketClasses = { cold_start: 'group-cold-start', warm: 'group-warm', cold_expired: 'group-cold' };
+        /* decorative (borders, card-top bars, table group underlines) */
+        --d-warm: #eab308;
+        --d-cold: #a855f7;
+        --d-cs: #38bdf8;
+        --d-total: #10b981;
 
-const directKeys = Object.keys(DATA.sections).filter(k => k.endsWith('|main'))
-  .sort((a,b) => (DATA.pricing[b.split('|')[0]]?.base??0) - (DATA.pricing[a.split('|')[0]]?.base??0));
+        /* group header text on --header-bg #f4f5f9 */
+        --gh-warm: #78350f; /* 6.3:1 ✓ */
+        --gh-cold: #5b21b6; /* 8.4:1 ✓ */
+        --gh-cs: #0c4a6e; /* 9.1:1 ✓ */
+        --gh-total: #064e3b; /* 9.5:1 ✓ */
+      }
 
-// ---- DIRECT TURNS TABLE ----
-const dHead = document.getElementById('directHead');
-let h1 = '<tr><th></th>';
-for (const b of buckets) h1 += `<th class="${bucketClasses[b]}${b!==buckets[0]?' col-sep':''}" colspan="3">${bucketLabels[b]}</th>`;
-h1 += '<th class="group-total col-sep">Total</th></tr>';
-let h2 = '<tr><th></th>';
-for (const b of buckets) h2 += `<th${b!==buckets[0]?' class="col-sep"':''}>Turns</th><th>Tokens</th><th>Cost</th>`;
-h2 += '<th class="col-sep">Cost</th></tr>';
-dHead.innerHTML = h1 + h2;
+      /* ─── DARK THEME (system preference) ───────────────────────────────── */
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0d0f14;
+          --card: #151821;
+          --card-hover: #1b1e2b;
+          --border: #1e2230;
+          --border2: #262b3d;
+          --text: #e4e4ef;
+          --text2: #b0b8cc;
+          --muted: #8b93aa; /* 6.4:1 on #151821 ✓ */
+          --header-bg: #0f1118;
+          --subtotal-bg: #13161f;
+          --shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+          --shadow-lg: 0 4px 24px rgba(0, 0, 0, 0.6);
 
-const dBody = document.getElementById('directBody');
-let dt = {cold_start:0, warm:0, cold_expired:0, total:0}; // direct cost totals
-let dTurns = {cold_start:0, warm:0, cold_expired:0, total:0};
-let ridx = 0;
+          --v-warm: #fde047; /* bright yellow,   11.7:1 ✓ */
+          --v-cold: #c084fc; /* bright purple,    7.3:1 ✓ */
+          --v-cs: #38bdf8; /* bright sky,       8.7:1 ✓ */
+          --v-total: #4ade80; /* bright green,    10.8:1 ✓ */
 
-for (const key of directKeys) {
-  const sec = DATA.sections[key], p = getPrice(key), name = modelName(key), rid = `d${ridx++}`;
-  let rowTotal = 0;
-  let html = `<td><span class="toggle-arrow collapsed" id="arrow-${rid}">${chevron}</span> ${name}</td>`;
-  for (const b of buckets) {
-    const turns = sec[b].human_turns, ic = bucketInputCost(sec[b], p);
-    dt[b] += ic; dTurns[b] += turns; rowTotal += ic;
-    html += `<td${b!==buckets[0]?' class="col-sep"':''}>${fmtTurns(turns)}</td><td></td><td>${fmtCost(ic)}</td>`;
-  }
-  dt.total += rowTotal; dTurns.total += buckets.reduce((s,b)=>s+sec[b].human_turns,0);
-  html += `<td class="col-sep">${fmtCost(rowTotal)}</td>`;
-  const tr = document.createElement('tr'); tr.className = 'model-row'; tr.innerHTML = html;
-  tr.onclick = () => toggleSection(rid); dBody.appendChild(tr);
+          --d-warm: #eab308;
+          --d-cold: #a855f7;
+          --d-cs: #38bdf8;
+          --d-total: #10b981;
 
-  // Detail rows
-  for (const f of [{l:'Base input',k:'input',r:'base'},{l:'Cache writes (5m)',k:'cache_write',r:'cache_write'},{l:'Cache read',k:'cache_read',r:'cache_read'}]) {
-    let dh = `<td>${f.l}</td>`;
-    for (const b of buckets) { const t=sec[b][f.k], c=cost(t,p?p[f.r]:0); dh += `<td${b!==buckets[0]?' class="col-sep"':''}></td><td>${fmtTokens(t)}</td><td>${fmtCost(c)}</td>`; }
-    dh += `<td class="col-sep">${fmtCost(buckets.reduce((s,b)=>s+cost(sec[b][f.k],p?p[f.r]:0),0))}</td>`;
-    const dtr = document.createElement('tr'); dtr.className = `detail-row ${rid} hidden`; dtr.innerHTML = dh; dBody.appendChild(dtr);
-  }
-}
+          --gh-warm: #fde047;
+          --gh-cold: #c084fc;
+          --gh-cs: #38bdf8;
+          --gh-total: #4ade80;
+        }
+      }
 
-// Direct subtotal
-{
-  let html = '<td>Human turns</td>';
-  for (const b of buckets) html += `<td${b!==buckets[0]?' class="col-sep"':''} class="turn-count">${dTurns[b]}</td><td></td><td>${fmtCost(dt[b])}</td>`;
-  html += `<td class="col-sep">${fmtCost(dt.total)}</td>`;
-  const tr = document.createElement('tr'); tr.className = 'subtotal'; tr.innerHTML = html; dBody.appendChild(tr);
-}
+      /* ─── MANUAL OVERRIDES (JS toggle sets data-theme on <html>) ────────── */
+      [data-theme="light"] {
+        --bg: #f0f1f5;
+        --card: #ffffff;
+        --card-hover: #f8f9fc;
+        --border: #e0e3ec;
+        --border2: #cdd1de;
+        --text: #111827;
+        --text2: #374151;
+        --muted: #5c6373;
+        --header-bg: #f4f5f9;
+        --subtotal-bg: #f7f8fc;
+        --shadow: 0 1px 4px rgba(0, 0, 0, 0.07), 0 1px 2px rgba(0, 0, 0, 0.04);
+        --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.11);
+        --v-warm: #a16207;
+        --v-cold: #6d28d9;
+        --v-cs: #0369a1;
+        --v-total: #065f46;
+        --d-warm: #eab308;
+        --d-cold: #a855f7;
+        --d-cs: #38bdf8;
+        --d-total: #10b981;
+        --gh-warm: #78350f;
+        --gh-cold: #5b21b6;
+        --gh-cs: #0c4a6e;
+        --gh-total: #064e3b;
+      }
 
-// ---- LLM ACTIONS TABLE ----
-const oHead = document.getElementById('overheadHead');
-oHead.innerHTML =
-  '<tr><th></th><th>Agent</th><th class="col-sep" colspan="4">Subagent</th><th class="col-sep"></th></tr>' +
-  '<tr><th>LLM actions</th><th>Output</th><th class="col-sep">Base</th><th>Write</th><th>Read</th><th>Output</th><th class="col-sep">Total</th></tr>';
-const oBody = document.getElementById('overheadBody');
-let llmTotal = 0;
-let llmCols = {agentOut:0, subBase:0, subWrite:0, subRead:0, subOut:0};
-let oidx = 0;
+      [data-theme="dark"] {
+        --bg: #0d0f14;
+        --card: #151821;
+        --card-hover: #1b1e2b;
+        --border: #1e2230;
+        --border2: #262b3d;
+        --text: #e4e4ef;
+        --text2: #b0b8cc;
+        --muted: #8b93aa;
+        --header-bg: #0f1118;
+        --subtotal-bg: #13161f;
+        --shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+        --shadow-lg: 0 4px 24px rgba(0, 0, 0, 0.6);
+        --v-warm: #fde047;
+        --v-cold: #c084fc;
+        --v-cs: #38bdf8;
+        --v-total: #4ade80;
+        --d-warm: #eab308;
+        --d-cold: #a855f7;
+        --d-cs: #38bdf8;
+        --d-total: #10b981;
+        --gh-warm: #fde047;
+        --gh-cold: #c084fc;
+        --gh-cs: #38bdf8;
+        --gh-total: #4ade80;
+      }
 
-const allModels = [...new Set(Object.keys(DATA.sections).map(k=>k.split('|')[0]))]
-  .sort((a,b) => (DATA.pricing[b]?.base??0) - (DATA.pricing[a]?.base??0));
+      /* ─── RESET ─────────────────────────────────────────────────────────── */
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html {
+        color-scheme: light dark;
+      }
 
-const aggCost = (sec, costKey, rateKey, p) =>
-  sec ? buckets.reduce((s,b) => s + cost(sec[b][costKey], p?.[rateKey]??0), 0) : 0;
+      body {
+        font-family: "Bricolage Grotesque", system-ui, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        padding: 2rem;
+        max-width: 1280px;
+        margin: 0 auto;
+        min-height: 100vh;
+        transition:
+          background 0.2s,
+          color 0.2s;
+      }
 
-for (const model of allModels) {
-  const mainSec = DATA.sections[`${model}|main`];
-  const subSec = DATA.sections[`${model}|subagent`];
-  const p = DATA.pricing[model];
-  const oid = `o${oidx++}`;
-  const name = modelName(model+'|x');
+      /* ─── HEADER ─────────────────────────────────────────────────────────── */
+      .header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        margin-bottom: 1.75rem;
+      }
+      h1 {
+        font-size: 1.55rem;
+        font-weight: 700;
+        letter-spacing: -0.025em;
+        line-height: 1.2;
+      }
+      .subtitle {
+        color: var(--muted);
+        font-size: 0.78rem;
+        margin-top: 0.3rem;
+        font-family: "JetBrains Mono", monospace;
+      }
 
-  const agentOut = aggCost(mainSec, 'output', 'output', p);
-  const subBase = aggCost(subSec, 'input', 'base', p);
-  const subWrite = aggCost(subSec, 'cache_write', 'cache_write', p);
-  const subRead = aggCost(subSec, 'cache_read', 'cache_read', p);
-  const subOut = aggCost(subSec, 'output', 'output', p);
-  const rowTotal = agentOut + subBase + subWrite + subRead + subOut;
+      /* ─── THEME TOGGLE ───────────────────────────────────────────────────── */
+      .theme-toggle {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 0.3rem 0.7rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-size: 0.73rem;
+        font-family: "Bricolage Grotesque", sans-serif;
+        font-weight: 600;
+        color: var(--text2);
+        box-shadow: var(--shadow);
+        transition:
+          background 0.15s,
+          border-color 0.15s,
+          color 0.15s;
+        flex-shrink: 0;
+        margin-top: 0.15rem;
+      }
+      .theme-toggle:hover {
+        background: var(--card-hover);
+        border-color: var(--border2);
+        color: var(--text);
+      }
+      .theme-toggle svg {
+        width: 13px;
+        height: 13px;
+        flex-shrink: 0;
+      }
 
-  llmTotal += rowTotal;
-  llmCols.agentOut += agentOut; llmCols.subBase += subBase; llmCols.subWrite += subWrite;
-  llmCols.subRead += subRead; llmCols.subOut += subOut;
+      /* ─── SUMMARY GRID ───────────────────────────────────────────────────── */
+      .summary-section {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 0.75rem;
+        margin-bottom: 1.5rem;
+      }
+      .summary-card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 1rem 1.1rem 0.9rem;
+        box-shadow: var(--shadow);
+        position: relative;
+        overflow: hidden;
+        transition:
+          background 0.15s,
+          border-color 0.15s,
+          transform 0.15s,
+          box-shadow 0.15s;
+      }
+      .summary-card::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 3px;
+        background: var(--border2);
+        transition: background 0.2s;
+      }
+      .summary-card:hover {
+        background: var(--card-hover);
+        transform: translateY(-1px);
+        box-shadow: var(--shadow-lg);
+      }
 
-  const subTurns = subSec ? buckets.reduce((s,b) => s + subSec[b].human_turns, 0) : 0;
-  const tr = document.createElement('tr'); tr.className = 'model-row';
-  tr.innerHTML = `<td><span class="toggle-arrow collapsed" id="arrow-${oid}">${chevron}</span> ${name}</td><td>${fmtCost(agentOut)}</td><td class="col-sep">${fmtCost(subBase)}</td><td>${fmtCost(subWrite)}</td><td>${fmtCost(subRead)}</td><td>${fmtCost(subOut)}</td><td class="col-sep">${fmtCost(rowTotal)}</td>`;
-  if (subTurns > 0) tr.onclick = () => toggleSection(oid);
-  oBody.appendChild(tr);
+      .summary-card.ac-warm::before {
+        background: var(--d-warm);
+      }
+      .summary-card.ac-cold::before {
+        background: var(--d-cold);
+      }
+      .summary-card.ac-cs::before {
+        background: var(--d-cs);
+      }
+      .summary-card.ac-total::before {
+        background: var(--d-total);
+      }
 
-  if (subTurns > 0) {
-    for (const b of buckets) {
-      const turns = subSec[b].human_turns;
-      const bBase = cost(subSec[b].input, p?.base??0);
-      const bWrite = cost(subSec[b].cache_write, p?.cache_write??0);
-      const bRead = cost(subSec[b].cache_read, p?.cache_read??0);
-      const bOut = cost(subSec[b].output, p?.output??0);
-      const dtr = document.createElement('tr'); dtr.className = `detail-row ${oid} hidden`;
-      dtr.innerHTML = `<td>${bucketLabels[b]} (${turns} turns)</td><td></td><td class="col-sep">${fmtCost(bBase)}</td><td>${fmtCost(bWrite)}</td><td>${fmtCost(bRead)}</td><td>${fmtCost(bOut)}</td><td class="col-sep"></td>`;
-      oBody.appendChild(dtr);
-    }
-  }
-}
+      .summary-card .label {
+        font-size: 0.63rem;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-weight: 700;
+      }
+      .summary-card .value {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 1.45rem;
+        font-weight: 600;
+        letter-spacing: -0.025em;
+        margin-top: 0.25rem;
+        color: var(--text);
+        transition: color 0.2s;
+      }
+      .summary-card .value.v-warm {
+        color: var(--v-warm);
+      }
+      .summary-card .value.v-cold {
+        color: var(--v-cold);
+      }
+      .summary-card .value.v-cs {
+        color: var(--v-cs);
+      }
+      .summary-card .value.v-total {
+        color: var(--v-total);
+      }
 
-// LLM actions subtotal
-{ const tr = document.createElement('tr'); tr.className = 'subtotal';
-  tr.innerHTML = `<td>LLM actions</td><td>${fmtCost(llmCols.agentOut)}</td><td class="col-sep">${fmtCost(llmCols.subBase)}</td><td>${fmtCost(llmCols.subWrite)}</td><td>${fmtCost(llmCols.subRead)}</td><td>${fmtCost(llmCols.subOut)}</td><td class="col-sep">${fmtCost(llmTotal)}</td>`;
-  oBody.appendChild(tr); }
+      .summary-card .detail {
+        font-size: 0.7rem;
+        color: var(--muted);
+        margin-top: 0.3rem;
+        font-family: "JetBrains Mono", monospace;
+        line-height: 1.4;
+      }
 
-// Grand total
-const grandTotal = dt.total + llmTotal;
-document.getElementById('grandTotalValue').textContent = '$' + grandTotal.toFixed(2);
+      /* ─── SECTION LABEL ──────────────────────────────────────────────────── */
+      .section-label {
+        font-size: 0.62rem;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin-bottom: 0.45rem;
+        margin-top: 1.5rem;
+      }
+      .section-label:first-of-type {
+        margin-top: 0;
+      }
 
-// ---- TOGGLE ----
-function toggleSection(sid) {
-  const rows = document.querySelectorAll(`.detail-row.${sid}`);
-  const arrow = document.getElementById(`arrow-${sid}`);
-  const vis = !rows[0]?.classList.contains('hidden');
-  rows.forEach(r => r.classList.toggle('hidden', vis));
-  arrow.classList.toggle('expanded', !vis); arrow.classList.toggle('collapsed', vis);
-}
+      /* ─── TABLE WRAP ─────────────────────────────────────────────────────── */
+      .table-wrap {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        overflow: hidden;
+        margin-bottom: 1.5rem;
+        box-shadow: var(--shadow);
+        transition:
+          background 0.2s,
+          border-color 0.2s;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.775rem;
+      }
 
-// ---- SUMMARY CARDS ----
-const meta = DATA.meta;
-const directInputTotal = dt.cold_start + dt.warm + dt.cold_expired;
-function addCard(row, label, value, detail, cls) {
-  const d = document.createElement('div'); d.className = 'summary-card';
-  d.innerHTML = `<div class="label">${label}</div><div class="value ${cls||''}">${value}</div><div class="detail">${detail}</div>`;
-  document.getElementById(row).appendChild(d);
-}
+      /* ─── TABLE HEADERS ──────────────────────────────────────────────────── */
+      thead th {
+        background: var(--header-bg);
+        font-weight: 600;
+        text-align: left;
+        padding: 0.5rem 0.7rem;
+        border-bottom: 1px solid var(--border2);
+        white-space: nowrap;
+        font-size: 0.68rem;
+        color: var(--text2);
+        letter-spacing: 0.01em;
+        transition:
+          background 0.2s,
+          color 0.2s;
+      }
+      thead th:first-child {
+        text-align: left;
+      }
+      thead th.group-hdr {
+        text-align: left;
+      }
 
-addCard('summaryRow1', 'Total spend', '$'+grandTotal.toFixed(2), `${fmt(dTurns.total)} direct turns`);
-addCard('summaryRow1', 'Session starts', fmt(dTurns.cold_start), `${fmtCost(dt.cold_start)} (${(100*dt.cold_start/directInputTotal).toFixed(0)}% of direct input)`, 'cold-start');
-addCard('summaryRow1', 'Warm turns', fmt(dTurns.warm), `${fmtCost(dt.warm)} (${(100*dt.warm/directInputTotal).toFixed(0)}% of direct input)`, 'warm');
-addCard('summaryRow1', 'Cold turns', fmt(dTurns.cold_expired), `${fmtCost(dt.cold_expired)} (${(100*dt.cold_expired/directInputTotal).toFixed(0)}% of direct input)`, 'cold');
+      thead th.group-warm {
+        color: var(--gh-warm);
+        border-bottom: 2px solid var(--d-warm);
+      }
+      thead th.group-cold-start {
+        color: var(--gh-cs);
+        border-bottom: 2px solid var(--d-cs);
+      }
+      thead th.group-cold {
+        color: var(--gh-cold);
+        border-bottom: 2px solid var(--d-cold);
+      }
+      thead th.group-total {
+        color: var(--gh-total);
+        border-bottom: 2px solid var(--d-total);
+      }
 
-addCard('summaryRow2', 'Sessions', fmt(meta.totalSessions), `${meta.activeDays} active days`);
-addCard('summaryRow2', 'Avg turns / session', (dTurns.total / meta.totalSessions).toFixed(1), '');
-const totalCompactions = (meta.compactions?.auto ?? 0) + (meta.compactions?.manual ?? 0);
-addCard('summaryRow2', 'Compactions', fmt(totalCompactions), `${meta.compactions?.auto ?? 0} auto, ${meta.compactions?.manual ?? 0} manual \u00b7 cost not logged`);
-addCard('summaryRow2', 'LLM actions', '$'+llmTotal.toFixed(2), `${(100*llmTotal/grandTotal).toFixed(0)}% of total (output + subagents)`);
+      /* ─── TABLE CELLS ────────────────────────────────────────────────────── */
+      tbody td {
+        padding: 0.45rem 0.7rem;
+        text-align: left;
+        border-bottom: 1px solid var(--border);
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.72rem;
+        color: var(--text);
+        transition:
+          background 0.12s,
+          color 0.2s,
+          border-color 0.2s;
+      }
+      tbody td:first-child {
+        text-align: left;
+        font-family: "Bricolage Grotesque", sans-serif;
+        font-size: 0.775rem;
+        font-weight: 500;
+      }
+      tbody tr:last-child td {
+        border-bottom: none;
+      }
 
-document.getElementById('dateRange').textContent = meta.dateRange.length ? `${meta.dateRange[0]} \u2013 ${meta.dateRange[1]} \u00b7 All projects` : 'All projects';
+      tbody tr.model-row {
+        cursor: pointer;
+        user-select: none;
+      }
+      tbody tr.model-row:hover td {
+        background: var(--card-hover);
+      }
+      tbody tr.model-row td:first-child {
+        font-weight: 600;
+      }
 
-const models = [...new Set(Object.keys(DATA.sections).map(k=>k.split('|')[0]))];
-const pNotes = models.map(m => { const p=DATA.pricing[m]; return p ? `${modelName(m+'|x')}: $${p.base} base, $${p.cache_write} write, $${p.cache_read} hit, $${p.output} output` : `${modelName(m+'|x')}: pricing unavailable`; }).join('. ');
-document.getElementById('footnotes').innerHTML = `MTok = million tokens. ${pNotes}.<br>"Session start" = first turn in a session (always cold). "Warm" = cache hit &gt;90%. "Cold" = &gt;5m gap or partial miss.<br>LLM actions = output tokens + subagent API calls. ${fmt(meta.totalSessions)} sessions, ${fmt(meta.subagentSessions)} subagent spawns. Deduplicated by requestId.`;
-</script></body></html>
+      tbody tr.subtotal td {
+        border-top: 1px solid var(--border2);
+        border-bottom: none;
+        background: var(--subtotal-bg);
+        font-weight: 600;
+      }
+
+      tbody tr.detail-row.hidden {
+        display: none;
+      }
+      tbody tr.detail-row td {
+        color: var(--text2);
+        background: var(--header-bg);
+        font-size: 0.695rem;
+      }
+      tbody tr.detail-row td:first-child {
+        padding-left: 2rem;
+        font-family: "Bricolage Grotesque", sans-serif;
+        font-size: 0.72rem;
+        font-weight: 400;
+        color: var(--muted);
+      }
+      tbody tr.detail-row:hover td {
+        background: var(--card-hover);
+      }
+      tbody tr.detail-row-deep td:first-child {
+        padding-left: calc(2rem + 1em);
+      }
+      tbody tr.detail-row.clickable {
+        cursor: pointer;
+        user-select: none;
+      }
+      tbody tr.detail-row.clickable td:first-child {
+        font-weight: 600;
+      }
+
+      .col-sep {
+        border-left: 1px solid var(--border2) !important;
+      }
+
+      /* ─── TOGGLE ARROW ───────────────────────────────────────────────────── */
+      .toggle-arrow {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1em;
+        height: 1em;
+        margin-right: 0.2em;
+        vertical-align: middle;
+        transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+        color: var(--muted);
+      }
+      .toggle-arrow .toggle-arrow-svg {
+        width: 0.65em;
+        height: 0.65em;
+      }
+      .toggle-arrow.collapsed {
+        transform: rotate(0deg);
+      }
+      .toggle-arrow.expanded {
+        transform: rotate(90deg);
+      }
+
+      .turn-count {
+        font-weight: 600;
+        color: var(--text);
+      }
+
+      /* ─── GRAND TOTAL ────────────────────────────────────────────────────── */
+      .grand-total-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.9rem 1.2rem;
+        margin-bottom: 1.25rem;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        box-shadow: var(--shadow);
+        position: relative;
+        overflow: hidden;
+        transition:
+          background 0.2s,
+          border-color 0.2s;
+      }
+      .grand-total-bar::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+          120deg,
+          color-mix(in srgb, var(--d-total) 8%, transparent),
+          transparent 55%
+        );
+        pointer-events: none;
+      }
+      .grand-total-label {
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      .grand-total-value {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 1.45rem;
+        font-weight: 600;
+        color: var(--v-total);
+        letter-spacing: -0.025em;
+      }
+
+      /* ─── FOOTNOTE ───────────────────────────────────────────────────────── */
+      .footnote {
+        font-size: 0.67rem;
+        color: var(--muted);
+        line-height: 1.65;
+        padding: 0.85rem 1rem;
+        background: var(--header-bg);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        transition:
+          background 0.2s,
+          border-color 0.2s;
+      }
+      .footnote p + p {
+        margin-top: 0.5rem;
+      }
+
+      /* ─── ANIMATIONS ─────────────────────────────────────────────────────── */
+      @keyframes fadeUp {
+        from {
+          opacity: 0;
+          transform: translateY(6px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      .header {
+        animation: fadeUp 0.3s ease both;
+      }
+      .summary-section {
+        animation: fadeUp 0.3s 0.05s ease both;
+      }
+      .section-label {
+        animation: fadeUp 0.3s 0.08s ease both;
+      }
+      .table-wrap {
+        animation: fadeUp 0.3s 0.1s ease both;
+      }
+      .grand-total-bar {
+        animation: fadeUp 0.3s 0.14s ease both;
+      }
+      .footnote {
+        animation: fadeUp 0.3s 0.16s ease both;
+      }
+
+      /* ─── RESPONSIVE ─────────────────────────────────────────────────────── */
+      @media (max-width: 900px) {
+        body {
+          padding: 1rem;
+        }
+        .summary-section {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+      @media (max-width: 520px) {
+        .summary-section {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <div>
+        <h1>Claude Code Usage</h1>
+        <p class="subtitle" id="dateRange"></p>
+      </div>
+      <button
+        class="theme-toggle"
+        id="themeToggle"
+        aria-label="Toggle color theme"
+      >
+        <svg
+          id="themeIcon"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        ></svg>
+        <span id="themeLabel"></span>
+      </button>
+    </div>
+
+    <div class="summary-section" id="summaryRow1"></div>
+    <div class="summary-section" id="summaryRow2"></div>
+
+    <p class="section-label">Human input</p>
+    <div class="table-wrap">
+      <table id="directTable">
+        <thead id="directHead"></thead>
+        <tbody id="directBody"></tbody>
+      </table>
+    </div>
+
+    <p class="section-label">LLM Input/Output</p>
+    <div class="table-wrap" style="margin-bottom: 0.75rem">
+      <table id="overheadTable">
+        <thead id="overheadHead"></thead>
+        <tbody id="overheadBody"></tbody>
+      </table>
+    </div>
+
+    <div class="grand-total-bar">
+      <span class="grand-total-label">Grand total</span>
+      <span class="grand-total-value" id="grandTotalValue"></span>
+    </div>
+
+    <div class="footnote" id="footnotes"></div>
+
+    <script>
+      // ── THEME TOGGLE ──────────────────────────────────────────────────────────
+      // Three states: auto (follows system) → light → dark → auto …
+      // CSS @media (prefers-color-scheme) drives the default — switches instantly
+      // with the system with zero JS. JS only applies a saved manual override.
+      (function () {
+        const html = document.documentElement;
+        const btn = document.getElementById("themeToggle");
+        const icon = document.getElementById("themeIcon");
+        const label = document.getElementById("themeLabel");
+        const MQ = window.matchMedia("(prefers-color-scheme: dark)");
+
+        const ICONS = {
+          sun: '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>',
+          moon: '<path d="M21 12.79A9 9 0 1111.21 3a7 7 0 009.79 9.79z"/>',
+          auto: '<rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>',
+        };
+
+        // Apply saved override — CSS already shows the right system theme without this
+        const saved = localStorage.getItem("cc-theme");
+        if (saved && saved !== "auto") html.setAttribute("data-theme", saved);
+
+        // Returns "auto", "light", or "dark"
+        function getMode() {
+          return localStorage.getItem("cc-theme") || "auto";
+        }
+
+        function renderToggle() {
+          const mode = getMode();
+          if (mode === "auto") {
+            icon.innerHTML = ICONS.auto;
+            label.textContent = "Auto";
+          } else if (mode === "dark") {
+            icon.innerHTML = ICONS.sun;
+            label.textContent = "Light";
+          } else {
+            icon.innerHTML = ICONS.moon;
+            label.textContent = "Dark";
+          }
+        }
+
+        renderToggle();
+
+        btn.addEventListener("click", () => {
+          const mode = getMode();
+          const next =
+            mode === "auto" ? "light" : mode === "light" ? "dark" : "auto";
+          if (next === "auto") {
+            html.removeAttribute("data-theme");
+            localStorage.removeItem("cc-theme");
+          } else {
+            html.setAttribute("data-theme", next);
+            localStorage.setItem("cc-theme", next);
+          }
+          renderToggle();
+        });
+
+        // System changes: CSS handles visuals instantly; just keep the label in sync
+        MQ.addEventListener("change", () => {
+          if (getMode() === "auto") renderToggle();
+        });
+      })();
+
+      // ── HELPERS ───────────────────────────────────────────────────────────────
+      const DATA = __INJECTED_DATA__;
+
+      const fmt = (n) => n.toLocaleString("en-US");
+      const fmtCost = (n) => (n === 0 ? "—" : "$" + n.toFixed(2));
+      const fmtTokens = (n) => {
+        if (n === 0) return "—";
+        if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
+        if (n >= 1e3) return (n / 1e3).toFixed(0) + "K";
+        return fmt(n);
+      };
+      const fmtTurns = (n) => (n === 0 ? "—" : fmt(n));
+      const chevron =
+        '<svg class="toggle-arrow-svg" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 1.5L7 5L3 8.5"/></svg>';
+
+      function modelName(key) {
+        return key
+          .split("|")[0]
+          .replace("claude-", "")
+          .replace(/-/g, " ")
+          .replace(/(\d+) (\d+)/, "$1.$2")
+          .replace(/\b\w/g, (c) => c.toUpperCase());
+      }
+      function getPrice(key) {
+        return DATA.pricing[key.split("|")[0]] || null;
+      }
+      function cost(tokens, rate) {
+        return (tokens / 1e6) * rate;
+      }
+      function bucketInputCost(bd, p) {
+        return p
+          ? cost(bd.input, p.base) +
+              cost(bd.cache_write, p.cache_write) +
+              cost(bd.cache_read, p.cache_read)
+          : 0;
+      }
+
+      const buckets = ["cold_start", "warm", "cold_expired"];
+      const bucketLabels = {
+        cold_start: "Session start (cold)",
+        warm: "Warm turn",
+        cold_expired: "Cold turn",
+      };
+      const bucketClasses = {
+        cold_start: "group-cold-start",
+        warm: "group-warm",
+        cold_expired: "group-cold",
+      };
+
+      const directKeys = Object.keys(DATA.sections)
+        .filter((k) => k.endsWith("|main"))
+        .sort(
+          (a, b) =>
+            (DATA.pricing[b.split("|")[0]]?.base ?? 0) -
+            (DATA.pricing[a.split("|")[0]]?.base ?? 0),
+        );
+
+      // ── DIRECT TURNS TABLE ────────────────────────────────────────────────────
+      const dHead = document.getElementById("directHead");
+      let h1 = "<tr><th></th>";
+      for (const b of buckets)
+        h1 += `<th class="group-hdr ${bucketClasses[b]}${b !== buckets[0] ? " col-sep" : ""}" colspan="2">${bucketLabels[b]}</th>`;
+      h1 += '<th class="group-hdr group-total col-sep">Total</th></tr>';
+      let h2 = "<tr><th></th>";
+      for (const b of buckets)
+        h2 += `<th${b !== buckets[0] ? ' class="col-sep"' : ""}>Turns</th><th>Cost</th>`;
+      h2 += '<th class="col-sep">Cost</th></tr>';
+      dHead.innerHTML = h1 + h2;
+
+      const dBody = document.getElementById("directBody");
+      let dt = { cold_start: 0, warm: 0, cold_expired: 0, total: 0 };
+      let dTurns = { cold_start: 0, warm: 0, cold_expired: 0, total: 0 };
+      let coldTax = 0;
+      let ridx = 0;
+
+      for (const key of directKeys) {
+        const sec = DATA.sections[key],
+          p = getPrice(key),
+          name = modelName(key),
+          rid = `d${ridx++}`;
+        let rowTotal = 0;
+        let html = `<td><span class="toggle-arrow collapsed" id="arrow-${rid}">${chevron}</span> ${name}</td>`;
+        for (const b of buckets) {
+          const turns = sec[b].human_turns,
+            ic = bucketInputCost(sec[b], p);
+          dt[b] += ic;
+          dTurns[b] += turns;
+          rowTotal += ic;
+          if (p && b === "cold_expired")
+            coldTax += cost(sec[b].cache_write, p.cache_write - p.cache_read);
+          html += `<td${b !== buckets[0] ? ' class="col-sep"' : ""}>${fmtTurns(turns)}</td><td>${fmtCost(ic)}</td>`;
+        }
+        dt.total += rowTotal;
+        dTurns.total += buckets.reduce((s, b) => s + sec[b].human_turns, 0);
+        html += `<td class="col-sep">${fmtCost(rowTotal)}</td>`;
+        const tr = document.createElement("tr");
+        tr.className = "model-row";
+        tr.innerHTML = html;
+        tr.onclick = () => toggleSection(rid);
+        dBody.appendChild(tr);
+
+        for (const f of [
+          { l: "Base input", k: "input", r: "base" },
+          { l: "Cache writes (5m)", k: "cache_write", r: "cache_write" },
+          { l: "Cache read", k: "cache_read", r: "cache_read" },
+        ]) {
+          let dh = `<td>${f.l}</td>`;
+          for (const b of buckets) {
+            const t = sec[b][f.k],
+              c = cost(t, p ? p[f.r] : 0);
+            dh += `<td${b !== buckets[0] ? ' class="col-sep"' : ""}>${fmtTokens(t)}</td><td>${fmtCost(c)}</td>`;
+          }
+          dh += `<td class="col-sep">${fmtCost(buckets.reduce((s, b) => s + cost(sec[b][f.k], p ? p[f.r] : 0), 0))}</td>`;
+          const dtr = document.createElement("tr");
+          dtr.className = `detail-row ${rid} hidden`;
+          dtr.innerHTML = dh;
+          dBody.appendChild(dtr);
+        }
+      }
+
+      {
+        let html = "<td></td>";
+        for (const b of buckets)
+          html += `<td class="${b !== buckets[0] ? "col-sep turn-count" : "turn-count"}">${dTurns[b]}</td><td>${fmtCost(dt[b])}</td>`;
+        html += `<td class="col-sep">${fmtCost(dt.total)}</td>`;
+        const tr = document.createElement("tr");
+        tr.className = "subtotal";
+        tr.innerHTML = html;
+        dBody.appendChild(tr);
+      }
+
+      // ── LLM ACTIONS TABLE ─────────────────────────────────────────────────────
+      // Columns: Output Tokens | Output Subtotal | Cold Tokens | Cold Subtotal | Warm Tokens | Warm Subtotal | Total
+      // Cold = cold_start + cold_expired combined
+      const oHead = document.getElementById("overheadHead");
+      oHead.innerHTML =
+        "<tr><th></th>" +
+        '<th class="group-hdr" colspan="2">Output</th>' +
+        '<th class="group-hdr group-warm col-sep" colspan="2">Input (warm)</th>' +
+        '<th class="group-hdr group-cold col-sep" colspan="2">Input (cold)</th>' +
+        '<th class="group-hdr group-total col-sep">Total</th></tr>' +
+        "<tr><th></th>" +
+        "<th>Tokens</th><th>Subtotal</th>" +
+        '<th class="col-sep">Tokens</th><th>Subtotal</th>' +
+        '<th class="col-sep">Tokens</th><th>Subtotal</th>' +
+        '<th class="col-sep">Cost</th></tr>';
+
+      const oBody = document.getElementById("overheadBody");
+      const coldBuckets = ["cold_start", "cold_expired"];
+      const warmBuckets = ["warm"];
+
+      // Aggregate tokens+cost across buckets for a section
+      const aggTokens = (sec, key, bkts) =>
+        sec ? bkts.reduce((s, b) => s + (sec[b][key] || 0), 0) : 0;
+      const aggCostBkts = (sec, costKey, rateKey, p, bkts) =>
+        sec
+          ? bkts.reduce(
+              (s, b) => s + cost(sec[b][costKey], p?.[rateKey] ?? 0),
+              0,
+            )
+          : 0;
+
+      // Totals accumulators
+      let llmTotals = {
+        outTok: 0,
+        outCost: 0,
+        coldTok: 0,
+        coldCost: 0,
+        warmTok: 0,
+        warmCost: 0,
+        total: 0,
+      };
+      let oidx = 0;
+
+      const allModels = [
+        ...new Set(Object.keys(DATA.sections).map((k) => k.split("|")[0])),
+      ].sort(
+        (a, b) => (DATA.pricing[b]?.base ?? 0) - (DATA.pricing[a]?.base ?? 0),
+      );
+
+      for (const model of allModels) {
+        const mainSec = DATA.sections[`${model}|main`];
+        const subSec = DATA.sections[`${model}|subagent`];
+        const p = DATA.pricing[model];
+        const modelId = `o${oidx++}`;
+        const subId = `o${oidx++}`;
+        const name = modelName(model + "|x");
+
+        // Agent output (all buckets, flat rate)
+        const agentOutTok = aggTokens(mainSec, "output", buckets);
+        const agentOutCost = mainSec
+          ? buckets.reduce(
+              (s, b) => s + cost(mainSec[b].output, p?.output ?? 0),
+              0,
+            )
+          : 0;
+
+        // Subagent output (all buckets, flat rate)
+        const subOutTok = aggTokens(subSec, "output", buckets);
+        const subOutCost = subSec
+          ? buckets.reduce(
+              (s, b) => s + cost(subSec[b].output, p?.output ?? 0),
+              0,
+            )
+          : 0;
+
+        // Subagent input by warm/cold
+        const subColdCost = subSec
+          ? coldBuckets.reduce(
+              (s, b) =>
+                s +
+                cost(subSec[b].input, p?.base ?? 0) +
+                cost(subSec[b].cache_write, p?.cache_write ?? 0) +
+                cost(subSec[b].cache_read, p?.cache_read ?? 0),
+              0,
+            )
+          : 0;
+        const subWarmCost = subSec
+          ? warmBuckets.reduce(
+              (s, b) =>
+                s +
+                cost(subSec[b].input, p?.base ?? 0) +
+                cost(subSec[b].cache_write, p?.cache_write ?? 0) +
+                cost(subSec[b].cache_read, p?.cache_read ?? 0),
+              0,
+            )
+          : 0;
+        const subColdTok = subSec
+          ? coldBuckets.reduce(
+              (s, b) =>
+                s + (subSec[b].input || 0) + (subSec[b].cache_write || 0) + (subSec[b].cache_read || 0),
+              0,
+            )
+          : 0;
+        const subWarmTok = subSec
+          ? warmBuckets.reduce(
+              (s, b) =>
+                s + (subSec[b].input || 0) + (subSec[b].cache_write || 0) + (subSec[b].cache_read || 0),
+              0,
+            )
+          : 0;
+
+        // Model totals
+        const totalOutTok = agentOutTok + subOutTok;
+        const totalOutCost = agentOutCost + subOutCost;
+        const rowTotal = totalOutCost + subColdCost + subWarmCost;
+
+        llmTotals.outTok += totalOutTok;
+        llmTotals.outCost += totalOutCost;
+        llmTotals.coldTok += subColdTok;
+        llmTotals.coldCost += subColdCost;
+        llmTotals.warmTok += subWarmTok;
+        llmTotals.warmCost += subWarmCost;
+        llmTotals.total += rowTotal;
+
+        // ── Model row (collapsible, shows aggregates) ──
+        const modelTr = document.createElement("tr");
+        modelTr.className = "model-row";
+        modelTr.innerHTML =
+          `<td><span class="toggle-arrow collapsed" id="arrow-${modelId}">${chevron}</span> ${name}</td>` +
+          `<td>${fmtTokens(totalOutTok)}</td><td>${fmtCost(totalOutCost)}</td>` +
+          `<td class="col-sep">${fmtTokens(subWarmTok)}</td><td>${fmtCost(subWarmCost)}</td>` +
+          `<td class="col-sep">${fmtTokens(subColdTok)}</td><td>${fmtCost(subColdCost)}</td>` +
+          `<td class="col-sep">${fmtCost(rowTotal)}</td>`;
+        modelTr.onclick = () => toggleSection(modelId);
+        oBody.appendChild(modelTr);
+
+        // ── Agent row (detail under model) ──
+        const agentTr = document.createElement("tr");
+        agentTr.className = `detail-row ${modelId} hidden`;
+        agentTr.innerHTML =
+          `<td>Agent</td>` +
+          `<td>${fmtTokens(agentOutTok)}</td><td>${fmtCost(agentOutCost)}</td>` +
+          `<td class="col-sep"></td><td></td>` +
+          `<td class="col-sep"></td><td></td>` +
+          `<td class="col-sep">${fmtCost(agentOutCost)}</td>`;
+        oBody.appendChild(agentTr);
+
+        // ── Subagent summary row (collapsible, detail under model) ──
+        const subTr = document.createElement("tr");
+        subTr.className = `detail-row subagent-row ${modelId} hidden`;
+        const hasSubDetail = subSec && (subColdCost > 0 || subWarmCost > 0);
+        subTr.innerHTML =
+          `<td>${hasSubDetail ? `<span class="toggle-arrow collapsed" id="arrow-${subId}">${chevron}</span> ` : ""}Subagent</td>` +
+          `<td>${fmtTokens(subOutTok)}</td><td>${fmtCost(subOutCost)}</td>` +
+          `<td class="col-sep">${fmtTokens(subWarmTok)}</td><td>${fmtCost(subWarmCost)}</td>` +
+          `<td class="col-sep">${fmtTokens(subColdTok)}</td><td>${fmtCost(subColdCost)}</td>` +
+          `<td class="col-sep">${fmtCost(subOutCost + subColdCost + subWarmCost)}</td>`;
+        if (hasSubDetail) {
+          subTr.classList.add("clickable");
+          subTr.onclick = (e) => {
+            e.stopPropagation();
+            toggleSection(subId);
+          };
+        }
+        oBody.appendChild(subTr);
+
+        // ── Subagent detail rows (base, cache write, cache read) ──
+        if (subSec) {
+          for (const f of [
+            { l: "Base input", k: "input", r: "base" },
+            { l: "Cache write", k: "cache_write", r: "cache_write" },
+            { l: "Cache read", k: "cache_read", r: "cache_read" },
+          ]) {
+            const coldTok = coldBuckets.reduce(
+              (s, b) => s + (subSec[b][f.k] || 0),
+              0,
+            );
+            const coldC = coldBuckets.reduce(
+              (s, b) => s + cost(subSec[b][f.k], p?.[f.r] ?? 0),
+              0,
+            );
+            const warmTok = warmBuckets.reduce(
+              (s, b) => s + (subSec[b][f.k] || 0),
+              0,
+            );
+            const warmC = warmBuckets.reduce(
+              (s, b) => s + cost(subSec[b][f.k], p?.[f.r] ?? 0),
+              0,
+            );
+            const dtr = document.createElement("tr");
+            dtr.className = `detail-row detail-row-deep ${subId} hidden`;
+            dtr.innerHTML =
+              `<td>${f.l}</td>` +
+              `<td></td><td></td>` +
+              `<td class="col-sep">${fmtTokens(warmTok)}</td><td>${fmtCost(warmC)}</td>` +
+              `<td class="col-sep">${fmtTokens(coldTok)}</td><td>${fmtCost(coldC)}</td>` +
+              `<td class="col-sep"></td>`;
+            oBody.appendChild(dtr);
+          }
+        }
+      }
+
+      {
+        const tr = document.createElement("tr");
+        tr.className = "subtotal";
+        tr.innerHTML =
+          `<td></td>` +
+          `<td>${fmtTokens(llmTotals.outTok)}</td><td>${fmtCost(llmTotals.outCost)}</td>` +
+          `<td class="col-sep">${fmtTokens(llmTotals.warmTok)}</td><td>${fmtCost(llmTotals.warmCost)}</td>` +
+          `<td class="col-sep">${fmtTokens(llmTotals.coldTok)}</td><td>${fmtCost(llmTotals.coldCost)}</td>` +
+          `<td class="col-sep">${fmtCost(llmTotals.total)}</td>`;
+        oBody.appendChild(tr);
+      }
+
+      // ── GRAND TOTAL ───────────────────────────────────────────────────────────
+      const grandTotal = dt.total + llmTotals.total;
+      document.getElementById("grandTotalValue").textContent =
+        "$" + grandTotal.toFixed(2);
+
+      // ── ROW TOGGLE ────────────────────────────────────────────────────────────
+      function toggleSection(sid) {
+        const rows = document.querySelectorAll(`.detail-row.${sid}`);
+        const arrow = document.getElementById(`arrow-${sid}`);
+        const vis = !rows[0]?.classList.contains("hidden");
+        rows.forEach((r) => r.classList.toggle("hidden", vis));
+        arrow.classList.toggle("expanded", !vis);
+        arrow.classList.toggle("collapsed", vis);
+      }
+
+      // ── SUMMARY CARDS ─────────────────────────────────────────────────────────
+      const meta = DATA.meta;
+      const directInputTotal = dt.cold_start + dt.warm + dt.cold_expired;
+
+      function addCard(
+        container,
+        labelTxt,
+        valueTxt,
+        detailTxt,
+        valueCls,
+        accentCls,
+      ) {
+        const d = document.createElement("div");
+        d.className = `summary-card ${accentCls || ""}`;
+        d.innerHTML = `<div class="label">${labelTxt}</div><div class="value ${valueCls || ""}">${valueTxt}</div><div class="detail">${detailTxt}</div>`;
+        document.getElementById(container).appendChild(d);
+      }
+
+      addCard(
+        "summaryRow1",
+        "Total spend",
+        "$" + grandTotal.toFixed(2),
+        `Avg $${(grandTotal / dTurns.total).toFixed(2)} / human turn`,
+        "v-total",
+        "ac-total",
+      );
+      addCard(
+        "summaryRow1",
+        "Session starts",
+        fmt(dTurns.cold_start),
+        `${fmtCost(dt.cold_start)} · ${((100 * dt.cold_start) / directInputTotal).toFixed(0)}% of input`,
+        "v-cs",
+        "ac-cs",
+      );
+      addCard(
+        "summaryRow1",
+        "Warm human turns",
+        fmt(dTurns.warm),
+        `${fmtCost(dt.warm)} · ${((100 * dt.warm) / directInputTotal).toFixed(0)}% of input`,
+        "v-warm",
+        "ac-warm",
+      );
+      addCard(
+        "summaryRow1",
+        "Cold human turns",
+        fmt(dTurns.cold_expired),
+        `${fmtCost(dt.cold_expired)} · ${((100 * dt.cold_expired) / directInputTotal).toFixed(0)}% of input`,
+        "v-cold",
+        "ac-cold",
+      );
+
+      const totalCompactions =
+        (meta.compactions?.auto ?? 0) + (meta.compactions?.manual ?? 0);
+      addCard(
+        "summaryRow2",
+        "Sessions",
+        fmt(meta.totalSessions),
+        `${meta.activeDays} active days`,
+      );
+      addCard(
+        "summaryRow2",
+        "Total human turns",
+        fmt(dTurns.total),
+        `${(dTurns.total / meta.activeDays).toFixed(1)} / active day`,
+      );
+      addCard(
+        "summaryRow2",
+        "Compactions",
+        fmt(totalCompactions),
+        `${meta.compactions?.auto ?? 0} auto · ${meta.compactions?.manual ?? 0} manual`,
+      );
+      addCard(
+        "summaryRow2",
+        "Cold human turn tax",
+        "$" + coldTax.toFixed(2),
+        `${((100 * coldTax) / grandTotal).toFixed(0)}% of total · write premium over read`,
+        "v-cold",
+        "ac-cold",
+      );
+
+      // ── DATE RANGE ────────────────────────────────────────────────────────────
+      document.getElementById("dateRange").textContent = meta.dateRange.length
+        ? `${meta.dateRange[0]} – ${meta.dateRange[1]} · All projects`
+        : "All projects";
+
+      // ── FOOTNOTES ─────────────────────────────────────────────────────────────
+      const models = [
+        ...new Set(Object.keys(DATA.sections).map((k) => k.split("|")[0])),
+      ];
+      const pNotes = models
+        .map((m) => {
+          const p = DATA.pricing[m];
+          return p
+            ? `${modelName(m + "|x")}: $${p.base} base · $${p.cache_write} write · $${p.cache_read} hit · $${p.output} output`
+            : `${modelName(m + "|x")}: pricing unavailable`;
+        })
+        .join(". ");
+
+      document.getElementById("footnotes").innerHTML =
+        `<p>MTok = million tokens. ${pNotes}.</p>` +
+        `<p>"Session start" = first turn in a session (always cold). "Warm" = cache hit >90%. "Cold" = >5m gap or partial miss.</p>` +
+        `<p>LLM actions = output tokens + subagent API calls. ${fmt(meta.totalSessions)} sessions · ${fmt(meta.subagentSessions)} subagent spawns · deduplicated by requestId.</p>`;
+    </script>
+  </body>
+</html>

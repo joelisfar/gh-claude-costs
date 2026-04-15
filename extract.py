@@ -13,6 +13,7 @@ import argparse
 import glob
 import json
 import os
+import re
 import sys
 from collections import defaultdict
 
@@ -34,7 +35,6 @@ def normalize_model(model_id):
     if model_id.startswith("<"):
         return None  # skip <synthetic> etc
     # Strip date suffixes (e.g., -20251001)
-    import re
     return re.sub(r"-\d{8,}$", "", model_id)
 
 
