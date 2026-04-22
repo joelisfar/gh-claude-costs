@@ -727,10 +727,19 @@
       function cost(tokens, rate) {
         return (tokens / 1e6) * rate;
       }
+      // Helpers for the 5m/1h cache_write split.
+      function cwTok(bd) {
+        return (bd.cache_write_5m || 0) + (bd.cache_write_1h || 0);
+      }
+      function cwCost(bd, p) {
+        if (!p) return 0;
+        return cost(bd.cache_write_5m || 0, p.cache_write_5m || 0)
+             + cost(bd.cache_write_1h || 0, p.cache_write_1h || 0);
+      }
       function bucketInputCost(bd, p) {
         return p
           ? cost(bd.input, p.base) +
-              cost(bd.cache_write, p.cache_write) +
+              cwCost(bd, p) +
               cost(bd.cache_read, p.cache_read)
           : 0;
       }
@@ -787,9 +796,10 @@
           dt[b] += ic;
           dTurns[b] += turns;
           rowTotal += ic;
-          totalInputTok += (sec[b].input || 0) + (sec[b].cache_write || 0) + (sec[b].cache_read || 0);
+          totalInputTok += (sec[b].input || 0) + cwTok(sec[b]) + (sec[b].cache_read || 0);
           if (p && b === "cold_expired")
-            coldTax += cost(sec[b].cache_write, p.cache_write - p.cache_read);
+            coldTax += cost(sec[b].cache_write_5m || 0, (p.cache_write_5m || 0) - (p.cache_read || 0))
+                     + cost(sec[b].cache_write_1h || 0, (p.cache_write_1h || 0) - (p.cache_read || 0));
           html += `<td${b !== buckets[0] ? ' class="col-sep"' : ""}>${fmtTurns(turns)}</td><td>${fmtCost(ic)}</td>`;
         }
         dt.total += rowTotal;
@@ -803,7 +813,8 @@
 
         for (const f of [
           { l: "Base input", k: "input", r: "base" },
-          { l: "Cache writes (5m)", k: "cache_write", r: "cache_write" },
+          { l: "Cache writes (5m)", k: "cache_write_5m", r: "cache_write_5m" },
+          { l: "Cache writes (1h)", k: "cache_write_1h", r: "cache_write_1h" },
           { l: "Cache read", k: "cache_read", r: "cache_read" },
         ]) {
           let dh = `<td>${f.l}</td>`;
@@ -912,7 +923,7 @@
               (s, b) =>
                 s +
                 cost(subSec[b].input, p?.base ?? 0) +
-                cost(subSec[b].cache_write, p?.cache_write ?? 0) +
+                cwCost(subSec[b], p) +
                 cost(subSec[b].cache_read, p?.cache_read ?? 0),
               0,
             )
@@ -922,7 +933,7 @@
               (s, b) =>
                 s +
                 cost(subSec[b].input, p?.base ?? 0) +
-                cost(subSec[b].cache_write, p?.cache_write ?? 0) +
+                cwCost(subSec[b], p) +
                 cost(subSec[b].cache_read, p?.cache_read ?? 0),
               0,
             )
@@ -932,7 +943,7 @@
               (s, b) =>
                 s +
                 (subSec[b].input || 0) +
-                (subSec[b].cache_write || 0) +
+                cwTok(subSec[b]) +
                 (subSec[b].cache_read || 0),
               0,
             )
@@ -942,7 +953,7 @@
               (s, b) =>
                 s +
                 (subSec[b].input || 0) +
-                (subSec[b].cache_write || 0) +
+                cwTok(subSec[b]) +
                 (subSec[b].cache_read || 0),
               0,
             )
@@ -1007,7 +1018,8 @@
         if (subSec) {
           for (const f of [
             { l: "Base input", k: "input", r: "base" },
-            { l: "Cache write", k: "cache_write", r: "cache_write" },
+            { l: "Cache write (5m)", k: "cache_write_5m", r: "cache_write_5m" },
+            { l: "Cache write (1h)", k: "cache_write_1h", r: "cache_write_1h" },
             { l: "Cache read", k: "cache_read", r: "cache_read" },
           ]) {
             const coldTok = coldBuckets.reduce(
@@ -1157,7 +1169,7 @@
         .map((m) => {
           const p = DATA.pricing[m];
           return p
-            ? `${modelName(m + "|x")}: $${p.base} base · $${p.cache_write} write · $${p.cache_read} hit · $${p.output} output`
+            ? `${modelName(m + "|x")}: $${p.base} base · $${p.cache_write_5m} write/5m · $${p.cache_write_1h} write/1h · $${p.cache_read} hit · $${p.output} output`
             : `${modelName(m + "|x")}: pricing unavailable`;
         })
         .join(". ");
